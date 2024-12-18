@@ -1,139 +1,134 @@
-﻿namespace HashTables;
+﻿using System;
+using System.Collections.Generic;
 
-// Хеш-таблица с цепочками
-
-public class HashTableChaining : IHashTable
+namespace HashTables
 {
-    private const int TableSize = 1000; // Размер таблицы
-    private List<int>[] table; // Массив списков для цепочек
-
-    public enum HashMethod
+    public class HashTableChaining<TKey, TValue>
     {
-        Division,
-        Multiplication,
-        XorConstantHash,
-        RotateLeftHash,
-        XorAddHash,
-        PolynomialHash
-    }
-    
-    private HashMethod hashMethod;
+        private const int TableSize = 1000; // Размер таблицы
+        private List<(TKey Key, TValue Value)>[] table;
 
-    public HashTableChaining(HashMethod method)
-    {
-        table = new List<int>[TableSize];
-        for (int i = 0; i < TableSize; i++)
-            table[i] = new List<int>();
-
-        hashMethod = method;
-    }
-    
-    // Вставка ключа в хеш-таблицу
-    public void Insert(int key)
-    {
-        int index = GetHash(key);
-        if (index < 0 || index >= TableSize)
+        public enum HashMethod
         {
-            throw new IndexOutOfRangeException($"Хэш-функция вернула недопустимый индекс: {index}");
+            Division,
+            Multiplication,
+            XorConstantHash,
+            RotateLeftHash,
+            XorAddHash,
+            PolynomialHash
         }
-        if (!table[index].Contains(key))
-            table[index].Add(key);
-    }
 
-    // Поиск ключа в хеш-таблице
-    public bool Search(int key)
-    {
-        int index = GetHash(key);
-        return table[index].Contains(key);
-    }
+        private readonly HashMethod hashMethod;
 
-    // Удаление ключа из хеш-таблицы
-    public bool Delete(int key)
-    {
-        int index = GetHash(key);
-        return table[index].Remove(key);
-    }
-    
-    // Выбор метода хеширования
-    private int GetHash(int key)
-    {
-        switch (hashMethod)
+        public HashTableChaining(HashMethod method)
         {
-            case HashMethod.Division:
-                return DivisionHash(key);
-            case HashMethod.Multiplication:
-                return MultiplicationHash(key);
-            case HashMethod.XorConstantHash:
-                return XorConstantHash(key);
-            case HashMethod.RotateLeftHash:
-                return RotateLeftHash(key);
-            case HashMethod.XorAddHash:
-                return XorAddHash(key);
-            case HashMethod.PolynomialHash:
-                return PolynomialHash(key);
-            default:
-                throw new InvalidOperationException("Неизвестный метод хэширования");
+            table = new List<(TKey, TValue)>[TableSize];
+            for (int i = 0; i < TableSize; i++)
+                table[i] = new List<(TKey, TValue)>();
+
+            hashMethod = method;
         }
-    }
-    
-    // Метод деления
-    private int DivisionHash(int key)
-    {
-        return key % TableSize;
-    }
 
-    // Метод умножения
-    private int MultiplicationHash(int key)
-    {
-        double A = 0.6180339887; // Константа, 0 < A < 1
-        return (int)(TableSize * (key * A % 1));
-    }
-
-    // Собственный метод хеширования (например, xor с константой)
-    private int XorConstantHash(int key)
-    {
-        return (key ^ 1234567) % TableSize; // Простое преобразование с использованием XOR
-    }
-    
-    // Метод с использованием циклического сдвига (Rotate Left)
-    private int RotateLeftHash(int key)
-    {
-        return Math.Abs(((key << 5) | (key >> 27)) % TableSize);
-    }
-    
-    // Метод с использованием XOR и сложения
-    private int XorAddHash(int key)
-    {
-        return Math.Abs(((key ^ (key << 3)) + (key ^ (key >> 5))) % TableSize); // Добавлен % TableSize
-    }
-    
-    // Метод с использованием полиномиального хэширования
-    private int PolynomialHash(int key)
-    {
-        return Math.Abs((key * 31 + 17) % TableSize); // Добавлен % TableSize
-    }
-    
-    // Статистика: длины цепочек
-    public (int minLength, int maxLength) GetChainLengths()
-    {
-        int min = int.MaxValue, max = 0;
-        foreach (var chain in table)
+        // Вставка или обновление пары ключ-значение
+        public void Insert(TKey key, TValue value)
         {
-            int length = chain.Count;
-            if (length > max) max = length;
-            if (length < min) min = length;
-        }
-        return (min, max);
-    }
+            int index = GetHash(key);
+            var chain = table[index];
 
-    // Подсчет коэффициента заполнения
-    public double GetLoadFactor()
-    {
-        int nonEmptyChains = 0;
-        foreach (var chain in table)
-        {
-            if (chain.Count > 0) nonEmptyChains++;
+            for (int i = 0; i < chain.Count; i++)
+            {
+                if (EqualityComparer<TKey>.Default.Equals(chain[i].Key, key))
+                {
+                    chain[i] = (key, value); // Обновление значения
+                    return;
+                }
+            }
+
+            chain.Add((key, value)); // Добавление новой пары
         }
-        return (double)nonEmptyChains / TableSize;
+
+        // Поиск значения по ключу
+        public bool TryGetValue(TKey key, out TValue value)
+        {
+            int index = GetHash(key);
+            var chain = table[index];
+
+            foreach (var pair in chain)
+            {
+                if (EqualityComparer<TKey>.Default.Equals(pair.Key, key))
+                {
+                    value = pair.Value;
+                    return true;
+                }
+            }
+
+            value = default;
+            return false;
+        }
+
+        // Удаление пары по ключу
+        public bool Remove(TKey key)
+        {
+            int index = GetHash(key);
+            var chain = table[index];
+
+            for (int i = 0; i < chain.Count; i++)
+            {
+                if (EqualityComparer<TKey>.Default.Equals(chain[i].Key, key))
+                {
+                    chain.RemoveAt(i);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private int GetHash(TKey key)
+        {
+            int hash = key.GetHashCode();
+            switch (hashMethod)
+            {
+                case HashMethod.Division:
+                    return Math.Abs(hash) % TableSize;
+                case HashMethod.Multiplication:
+                    double A = 0.6180339887; // Константа: 0 < A < 1
+                    return (int)(TableSize * ((hash * A) % 1));
+                case HashMethod.XorConstantHash:
+                    return Math.Abs((hash ^ 1234567) % TableSize);
+                case HashMethod.RotateLeftHash:
+                    return Math.Abs(((hash << 5) | (hash >> 27)) % TableSize);
+                case HashMethod.XorAddHash:
+                    return Math.Abs(((hash ^ (hash << 3)) + (hash ^ (hash >> 5))) % TableSize);
+                case HashMethod.PolynomialHash:
+                    return Math.Abs((hash * 31 + 17) % TableSize);
+                default:
+                    throw new InvalidOperationException("Неизвестный метод хеширования");
+            }
+        }
+
+        // Статистика: минимальная и максимальная длина цепочек
+        public (int minLength, int maxLength) GetChainLengths()
+        {
+            int min = int.MaxValue, max = 0;
+            foreach (var chain in table)
+            {
+                int length = chain.Count;
+                if (length > max) max = length;
+                if (length < min) min = length;
+            }
+            return (min == int.MaxValue ? 0 : min, max);
+        }
+
+        // Коэффициент заполнения
+        public double GetLoadFactor()
+        {
+            int nonEmptyChains = 0;
+            foreach (var chain in table)
+            {
+                if (chain.Count > 0) nonEmptyChains++;
+            }
+            return (double)nonEmptyChains / TableSize;
+        }
     }
 }

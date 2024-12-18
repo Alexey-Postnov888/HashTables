@@ -1,173 +1,184 @@
-﻿namespace HashTables;
+﻿using System;
+using System.Collections.Generic;
 
-public class HashTableOpenAddressing : IHashTable
+namespace HashTables
 {
-    private static int TableSize = 10000;
-    private int?[] table; // Массив для хранения ключей
-    private int currentSize; // Текущий размер таблицы
-
-    public enum CollisionResolution
+    public class HashTableOpenAddressing<TKey, TValue>
     {
-        LinearProbing,
-        QuadraticProbing,
-        DoubleHashing,
-        ModuloOffsetProbing,
-        XorConstantProbing
-    }
+        private static int TableSize = 10000;
+        private (TKey Key, TValue Value)?[] table;
+        private int currentSize;
 
-    private CollisionResolution resolutionMethod;
-
-    public HashTableOpenAddressing(CollisionResolution method)
-    {
-        table = new int?[TableSize];
-        currentSize = 0;
-        resolutionMethod = method;
-    }
-    
-    // Вставка ключа в хеш-таблицу
-    public void Insert(int key)
-    {
-        if ((double)currentSize / TableSize >= 0.5) // Если таблица заполнена > 50%, увеличиваем размер
+        public enum CollisionResolution
         {
-            Rehash();
+            LinearProbing,
+            QuadraticProbing,
+            DoubleHashing,
+            ModuloOffsetProbing,
+            XorConstantProbing
         }
 
-        int index = GetHash(key);
-        int i = 0;
+        private readonly CollisionResolution resolutionMethod;
 
-        while (i < TableSize) // Ограничение попыток поиска свободного места
+        public HashTableOpenAddressing(CollisionResolution method)
         {
-            int probeIndex = GetProbeIndex(index, key, i);
-            if (table[probeIndex] == null)
+            table = new (TKey, TValue)?[TableSize];
+            currentSize = 0;
+            resolutionMethod = method;
+        }
+
+        // Вставка или обновление пары ключ-значение
+        public void Insert(TKey key, TValue value)
+        {
+            if ((double)currentSize / TableSize >= 0.5)
+                Rehash();
+
+            int index = GetHash(key);
+            int i = 0;
+
+            while (i < TableSize)
             {
-                table[probeIndex] = key;
-                currentSize++;
-                return;
+                int probeIndex = GetProbeIndex(index, key, i);
+                if (table[probeIndex] == null || EqualityComparer<TKey>.Default.Equals(table[probeIndex].Value.Key, key))
+                {
+                    table[probeIndex] = (key, value);
+                    currentSize++;
+                    return;
+                }
+                i++;
             }
-            i++;
+
+            throw new InvalidOperationException("Не удалось вставить ключ: таблица заполнена или произошла ошибка");
         }
 
-        throw new InvalidOperationException("Failed to insert key: Table is full or probing failed.");
-    }
-
-    private void Rehash()
-    {
-        Console.WriteLine("Rehashing table...");
-        int newSize = GetNextPrime(TableSize * 2); // Следующее простое число
-        int?[] oldTable = table;
-
-        table = new int?[newSize];
-        TableSize = newSize; // Обновляем размер таблицы
-        currentSize = 0;
-
-        foreach (var key in oldTable)
+        // Поиск значения по ключу
+        public bool TryGetValue(TKey key, out TValue value)
         {
-            if (key.HasValue)
+            int index = GetHash(key);
+            int i = 0;
+
+            while (i < TableSize)
             {
-                Insert(key.Value); // Корректно вставляем элементы в новую таблицу
+                int probeIndex = GetProbeIndex(index, key, i);
+                if (table[probeIndex] == null)
+                    break;
+
+                if (EqualityComparer<TKey>.Default.Equals(table[probeIndex].Value.Key, key))
+                {
+                    value = table[probeIndex].Value.Value;
+                    return true;
+                }
+                i++;
             }
+
+            value = default;
+            return false;
         }
-    }
 
-    private int GetNextPrime(int start)
-    {
-        while (!IsPrime(start)) start++;
-        return start;
-    }
-
-    private bool IsPrime(int number)
-    {
-        if (number <= 1) return false;
-        for (int i = 2; i * i <= number; i++)
+        // Удаление пары по ключу
+        public bool Remove(TKey key)
         {
-            if (number % i == 0) return false;
-        }
-        return true;
-    }
+            int index = GetHash(key);
+            int i = 0;
 
-
-
-
-    // Поиск ключа в хеш-таблице
-    public bool Search(int key)
-    {
-        int index = GetHash(key);
-        int i = 0;
-
-        while (table[GetProbeIndex(index, key, i)] != null)
-        {
-            if (table[GetProbeIndex(index, key, i)] == key)
-                return true;
-            i++;
-        }
-        return false;
-    }
-    
-    // Удаление ключа из хеш-таблицы
-    public bool Delete(int key)
-    {
-        int index = GetHash(key);
-        int i = 0;
-
-        while (table[GetProbeIndex(index, key, i)] != null)
-        {
-            if (table[GetProbeIndex(index, key, i)] == key)
+            while (i < TableSize)
             {
-                table[GetProbeIndex(index, key, i)] = null;
-                currentSize--;
-                return true;
+                int probeIndex = GetProbeIndex(index, key, i);
+                if (table[probeIndex] == null)
+                    break;
+
+                if (EqualityComparer<TKey>.Default.Equals(table[probeIndex].Value.Key, key))
+                {
+                    table[probeIndex] = null;
+                    currentSize--;
+                    return true;
+                }
+                i++;
             }
-            i++;
+
+            return false;
         }
-        return false;
-    }
 
-    private int GetHash(int key)
-    {
-        return key % TableSize;
-    }
-    
-    private int GetProbeIndex(int hash, int key, int i)
-    {
-        switch (resolutionMethod)
+        private void Rehash()
         {
-            case CollisionResolution.LinearProbing:
-                return (hash + i) % TableSize;
-            case CollisionResolution.QuadraticProbing:
-                int quadraticIndex = (hash + i * i) % TableSize;
-                if (i >= TableSize) throw new InvalidOperationException("Quadratic probing failed: Table full or infinite loop detected.");
-                return quadraticIndex;
-            case CollisionResolution.DoubleHashing:
-                return (hash + i * SecondHash(key)) % TableSize;
-            case CollisionResolution.ModuloOffsetProbing:
-                return (hash + i * (key % 7 + 1)) % TableSize;
-            case CollisionResolution.XorConstantProbing:
-                return (hash + i * ((key ^ 12345) % TableSize)) % TableSize;
-            default:
-                throw new InvalidOperationException("Unknown collision resolution method");
-        }
-    }
+            int newSize = GetNextPrime(TableSize * 2);
+            var oldTable = table;
 
-    
-    private int SecondHash(int key)
-    {
-        return 7 - (key % 7);
-    }
+            table = new (TKey, TValue)?[newSize];
+            TableSize = newSize;
+            currentSize = 0;
 
-    // Подсчет длины самого длинного кластера
-    public int GetLongestCluster()
-    {
-        int maxCluster = 0, currentCluster = 0;
-        foreach (var cell in table)
-        {
-            if (cell != null)
-                currentCluster++;
-            else
+            foreach (var pair in oldTable)
             {
-                if (currentCluster > maxCluster) maxCluster = currentCluster;
-                currentCluster = 0;
+                if (pair.HasValue)
+                    Insert(pair.Value.Key, pair.Value.Value);
             }
         }
-        return Math.Max(maxCluster, currentCluster);
+
+        private int GetNextPrime(int start)
+        {
+            while (!IsPrime(start)) start++;
+            return start;
+        }
+
+        private bool IsPrime(int number)
+        {
+            if (number <= 1) return false;
+            for (int i = 2; i * i <= number; i++)
+            {
+                if (number % i == 0) return false;
+            }
+            return true;
+        }
+
+        private int GetHash(TKey key)
+        {
+            return Math.Abs(key.GetHashCode()) % TableSize;
+        }
+        private int GetProbeIndex(int hash, TKey key, int i)
+        {
+            switch (resolutionMethod)
+            {
+                case CollisionResolution.LinearProbing:
+                    return (hash + i) % TableSize;
+                case CollisionResolution.QuadraticProbing:
+                    return (hash + i * i) % TableSize;
+                case CollisionResolution.DoubleHashing:
+                    return (hash + i * SecondHash(key)) % TableSize;
+                case CollisionResolution.ModuloOffsetProbing:
+                    return (hash + i * (key.GetHashCode() % 7 + 1)) % TableSize;
+                case CollisionResolution.XorConstantProbing:
+                    return (hash + i * ((key.GetHashCode() ^ 12345) % TableSize)) % TableSize;
+                default:
+                    throw new InvalidOperationException("Неизвестный метод разрешения коллизий");
+            }
+        }
+
+        private int SecondHash(TKey key)
+        {
+            return 7 - (key.GetHashCode() % 7);
+        }
+        
+        // Подсчет длины самого длинного кластера в таблице (для открытой адресации)
+        public int GetLongestCluster()
+        {
+            int maxCluster = 0, currentCluster = 0;
+
+            foreach (var cell in table)
+            {
+                if (cell != null) // Если ячейка занята
+                    currentCluster++;
+                else
+                {
+                    // Обновляем максимальный кластер, если текущий завершен
+                    if (currentCluster > maxCluster)
+                        maxCluster = currentCluster;
+                    currentCluster = 0;
+                }
+            }
+
+            // Проверяем последний кластер, если таблица не закончилась пустой ячейкой
+            return Math.Max(maxCluster, currentCluster);
+        }
     }
 }
