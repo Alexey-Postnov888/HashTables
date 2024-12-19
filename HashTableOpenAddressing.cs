@@ -33,7 +33,7 @@ namespace HashTables
             if ((double)currentSize / TableSize >= 0.5)
                 Rehash();
 
-            int index = GetHash(key);
+            int index = CustomHash(key);
             int i = 0;
 
             while (i < TableSize)
@@ -54,7 +54,7 @@ namespace HashTables
         // Поиск значения по ключу
         public bool TryGetValue(TKey key, out TValue value)
         {
-            int index = GetHash(key);
+            int index = CustomHash(key);
             int i = 0;
 
             while (i < TableSize)
@@ -78,7 +78,7 @@ namespace HashTables
         // Удаление пары по ключу
         public bool Remove(TKey key)
         {
-            int index = GetHash(key);
+            int index = CustomHash(key);
             int i = 0;
 
             while (i < TableSize)
@@ -131,10 +131,30 @@ namespace HashTables
             return true;
         }
 
-        private int GetHash(TKey key)
+        private int CustomHash(TKey key)
         {
-            return Math.Abs(key.GetHashCode()) % TableSize;
+            if (key == null)
+                return 0;
+
+            // Хеш для чисел
+            if (key is int intKey)
+                return Math.Abs(intKey) % TableSize;
+
+            // Хеш для строк
+            if (key is string str)
+            {
+                int hash = 0;
+                foreach (char c in str)
+                {
+                    hash = (hash * 31) + c; // Полиномиальный хеш
+                }
+                return Math.Abs(hash) % TableSize;
+            }
+
+            // Для других типов используем длину объекта
+            return Math.Abs(key.ToString().Length) % TableSize;
         }
+
         private int GetProbeIndex(int hash, TKey key, int i)
         {
             switch (resolutionMethod)
@@ -146,9 +166,9 @@ namespace HashTables
                 case CollisionResolution.DoubleHashing:
                     return (hash + i * SecondHash(key)) % TableSize;
                 case CollisionResolution.ModuloOffsetProbing:
-                    return (hash + i * (key.GetHashCode() % 7 + 1)) % TableSize;
+                    return (hash + i * (CustomHash(key) % 7 + 1)) % TableSize;
                 case CollisionResolution.XorConstantProbing:
-                    return (hash + i * ((key.GetHashCode() ^ 12345) % TableSize)) % TableSize;
+                    return (hash + i * ((CustomHash(key) ^ 12345) % TableSize)) % TableSize;
                 default:
                     throw new InvalidOperationException("Неизвестный метод разрешения коллизий");
             }
@@ -156,9 +176,9 @@ namespace HashTables
 
         private int SecondHash(TKey key)
         {
-            return 7 - (key.GetHashCode() % 7);
+            return 7 - (CustomHash(key) % 7);
         }
-        
+
         // Подсчет длины самого длинного кластера в таблице (для открытой адресации)
         public int GetLongestCluster()
         {

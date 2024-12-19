@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Text;
 
 namespace HashTables
 {
@@ -12,13 +13,14 @@ namespace HashTables
         {
             Division,
             Multiplication,
-            XorConstantHash,
-            RotateLeftHash,
-            XorAddHash,
-            PolynomialHash
+            MurmurHash,
+            FNV1aHash,
+            PolynomialRollingHash,
+            JenkinsOneAtATimeHash
         }
 
         private readonly HashMethod hashMethod;
+        private readonly Random random = new Random(); // Для случайности
 
         public HashTableChaining(HashMethod method)
         {
@@ -86,25 +88,185 @@ namespace HashTables
 
         private int GetHash(TKey key)
         {
-            int hash = key.GetHashCode();
             switch (hashMethod)
             {
                 case HashMethod.Division:
-                    return Math.Abs(hash) % TableSize;
+                    return HashDivision(key);
                 case HashMethod.Multiplication:
-                    double A = 0.6180339887; // Константа: 0 < A < 1
-                    return (int)(TableSize * ((hash * A) % 1));
-                case HashMethod.XorConstantHash:
-                    return Math.Abs((hash ^ 1234567) % TableSize);
-                case HashMethod.RotateLeftHash:
-                    return Math.Abs(((hash << 5) | (hash >> 27)) % TableSize);
-                case HashMethod.XorAddHash:
-                    return Math.Abs(((hash ^ (hash << 3)) + (hash ^ (hash >> 5))) % TableSize);
-                case HashMethod.PolynomialHash:
-                    return Math.Abs((hash * 31 + 17) % TableSize);
+                    return HashMultiplication(key);
+                case HashMethod.MurmurHash:
+                    return HashMurmur(key);
+                case HashMethod.FNV1aHash:
+                    return HashFNV1a(key);
+                case HashMethod.PolynomialRollingHash:
+                    return HashPolynomialRolling(key);
+                case HashMethod.JenkinsOneAtATimeHash:
+                    return HashJenkinsOneAtATime(key);
                 default:
                     throw new InvalidOperationException("Неизвестный метод хеширования");
             }
+        }
+
+        // Метод деления
+        private int HashDivision(TKey key)
+        {
+            if (key == null)
+                return 0;
+
+            // Хеш числа - само число
+            if (key is int intKey)
+                return Math.Abs(intKey) % TableSize;
+
+            // Хеш строки - длина строки
+            if (key is string str)
+                return Math.Abs(str.Length) % TableSize;
+
+            // Для других типов используем GetHashCode()
+            return Math.Abs(key.GetHashCode()) % TableSize;
+        }
+
+        // Метод умножения
+        private int HashMultiplication(TKey key)
+        {
+            if (key == null)
+                return 0;
+
+            // Хеш числа - само число
+            if (key is int intKey)
+            {
+                double I = 0.6180339887; // Константа: 0 < A < 1
+                return (int)(TableSize * ((intKey * I) % 1));
+            }
+
+            // Хеш строки - длина строки
+            if (key is string str)
+            {
+                double S = 0.6180339887; // Константа: 0 < A < 1
+                return (int)(TableSize * ((str.Length * S) % 1));
+            }
+
+            // Для других типов используем GetHashCode()
+            int hash = key.GetHashCode();
+            double O = 0.6180339887; // Константа: 0 < A < 1
+            return (int)(TableSize * ((hash * O) % 1));
+        }
+
+        // MurmurHash
+        private int HashMurmur(TKey key)
+        {
+            if (key == null)
+                return 0;
+
+            byte[] data = Encoding.UTF8.GetBytes(key.ToString());
+            uint seed = (uint)random.Next(1, int.MaxValue); // Случайное семя
+            uint hash = MurmurHash2(data, seed);
+            return (int)(hash % TableSize);
+        }
+
+        private uint MurmurHash2(byte[] data, uint seed)
+        {
+            const uint m = 0x5bd1e995;
+            const int r = 24;
+
+            uint h = seed ^ (uint)data.Length;
+
+            int index = 0;
+            while (index + 4 <= data.Length)
+            {
+                uint k = BitConverter.ToUInt32(data, index);
+                k *= m;
+                k ^= k >> r;
+                k *= m;
+                h *= m;
+                h ^= k;
+                index += 4;
+            }
+
+            switch (data.Length - index)
+            {
+                case 3:
+                    h ^= (uint)data[index + 2] << 16;
+                    goto case 2;
+                case 2:
+                    h ^= (uint)data[index + 1] << 8;
+                    goto case 1;
+                case 1:
+                    h ^= data[index];
+                    h *= m;
+                    break;
+            }
+
+            h ^= h >> 13;
+            h *= m;
+            h ^= h >> 15;
+
+            return h;
+        }
+
+        // FNV-1a
+        private int HashFNV1a(TKey key)
+        {
+            if (key == null)
+                return 0;
+
+            byte[] data = Encoding.UTF8.GetBytes(key.ToString());
+            uint seed = (uint)random.Next(1, int.MaxValue); // Случайное семя
+            const uint offsetBasis = 2166136261;
+            const uint prime = 16777619;
+
+            uint hash = offsetBasis ^ seed;
+            foreach (byte b in data)
+            {
+                hash ^= b;
+                hash *= prime;
+            }
+
+            return (int)(hash % TableSize);
+        }
+
+        // Polynomial Rolling Hash
+        private int HashPolynomialRolling(TKey key)
+        {
+            if (key == null)
+                return 0;
+
+            string str = key.ToString();
+            const int p = 31; // Простое число
+            const int mod = 1000000007; // Большое простое число
+            long hash = 0;
+            long p_pow = 1;
+
+            foreach (char c in str)
+            {
+                hash = (hash + (c - 'a' + 1) * p_pow) % mod;
+                p_pow = (p_pow * p) % mod;
+            }
+
+            // Убедимся, что результат положительный и находится в диапазоне [0, TableSize - 1]
+            return (int)((hash + mod) % TableSize);
+        }
+
+        // Jenkins One-at-a-Time Hash
+        private int HashJenkinsOneAtATime(TKey key)
+        {
+            if (key == null)
+                return 0;
+
+            byte[] data = Encoding.UTF8.GetBytes(key.ToString());
+            uint hash = 0;
+
+            foreach (byte b in data)
+            {
+                hash += b;
+                hash += hash << 10;
+                hash ^= hash >> 6;
+            }
+
+            hash += hash << 3;
+            hash ^= hash >> 11;
+            hash += hash << 15;
+
+            return (int)(hash % TableSize);
         }
 
         // Статистика: минимальная и максимальная длина цепочек

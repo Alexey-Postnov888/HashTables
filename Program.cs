@@ -77,7 +77,7 @@ namespace HashTableDemo
 
         private static void RunTask2()
         {
-            const int NumKeys = 10000;
+            const int NumKeys = 100000;
             Random random = new Random();
             var keys = new int[NumKeys];
             for (int i = 0; i < NumKeys; i++)
