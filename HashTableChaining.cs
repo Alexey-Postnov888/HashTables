@@ -14,7 +14,7 @@ namespace HashTables
             Division,
             Multiplication,
             MurmurHash,
-            FNV1aHash,
+            Fnv1AHash,
             PolynomialRollingHash,
             JenkinsOneAtATimeHash
         }
@@ -96,7 +96,7 @@ namespace HashTables
                     return HashMultiplication(key);
                 case HashMethod.MurmurHash:
                     return HashMurmur(key);
-                case HashMethod.FNV1aHash:
+                case HashMethod.Fnv1AHash:
                     return HashFNV1a(key);
                 case HashMethod.PolynomialRollingHash:
                     return HashPolynomialRolling(key);
@@ -112,16 +112,13 @@ namespace HashTables
         {
             if (key == null)
                 return 0;
-
-            // Хеш числа - само число
+            
             if (key is int intKey)
                 return Math.Abs(intKey) % TableSize;
-
-            // Хеш строки - длина строки
+            
             if (key is string str)
                 return Math.Abs(str.Length) % TableSize;
-
-            // Для других типов используем GetHashCode()
+            
             return Math.Abs(key.GetHashCode()) % TableSize;
         }
 
@@ -130,24 +127,21 @@ namespace HashTables
         {
             if (key == null)
                 return 0;
-
-            // Хеш числа - само число
+            
             if (key is int intKey)
             {
-                double I = 0.6180339887; // Константа: 0 < A < 1
+                double I = 0.6180339887; // Константа: 0 < I < 1
                 return (int)(TableSize * ((intKey * I) % 1));
             }
-
-            // Хеш строки - длина строки
+            
             if (key is string str)
             {
-                double S = 0.6180339887; // Константа: 0 < A < 1
+                double S = 0.6180339887; // Константа: 0 < S < 1
                 return (int)(TableSize * ((str.Length * S) % 1));
             }
-
-            // Для других типов используем GetHashCode()
+            
             int hash = key.GetHashCode();
-            double O = 0.6180339887; // Константа: 0 < A < 1
+            double O = 0.6180339887; // Константа: 0 < O < 1
             return (int)(TableSize * ((hash * O) % 1));
         }
 
@@ -158,7 +152,7 @@ namespace HashTables
                 return 0;
 
             byte[] data = Encoding.UTF8.GetBytes(key.ToString());
-            uint seed = (uint)random.Next(1, int.MaxValue); // Случайное семя
+            uint seed = (uint)random.Next(1, int.MaxValue);
             uint hash = MurmurHash2(data, seed);
             return (int)(hash % TableSize);
         }
@@ -234,12 +228,12 @@ namespace HashTables
             const int p = 31; // Простое число
             const int mod = 1000000007; // Большое простое число
             long hash = 0;
-            long p_pow = 1;
+            long pPow = 1;
 
             foreach (char c in str)
             {
-                hash = (hash + (c - 'a' + 1) * p_pow) % mod;
-                p_pow = (p_pow * p) % mod;
+                hash = (hash + (c - 'a' + 1) * pPow) % mod;
+                pPow = (pPow * p) % mod;
             }
 
             // Убедимся, что результат положительный и находится в диапазоне [0, TableSize - 1]
